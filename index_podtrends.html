@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POD Trend Explorer — New Mexico</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<style>
+  :root {
+    --page: #f6f7f5; --surface-1: #ffffff; --ink-1: #1c231f; --ink-2: #4b564e;
+    --muted: #7c8a7f; --border: #d9e0da; --grid: #e7ece7; --wash: #eef2ee;
+    --accent: #2f6f4f; --accent-ink: #ffffff; --draw: #ff6600;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink-1); background: var(--page); display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--surface-1); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 700; margin: 0; white-space: nowrap; }
+  header .sub { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  header .sub a { color: var(--muted); }
+  .spacer { flex: 1; }
+  select, button {
+    font: inherit; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1);
+    border-radius: 6px; padding: 6px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--wash); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.small { padding: 4px 8px; font-size: 12px; }
+  #body { flex: 1; display: flex; min-height: 0; }
+  #mapWrap { position: relative; flex: 1 1 55%; min-width: 0; }
+  #map { position: absolute; inset: 0; }
+  #drawOverlay { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 950; display: flex; gap: 8px; align-items: center; }
+  #drawFilterBtn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 14px; padding: 11px 20px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.28); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  #drawFilterBtn:hover { filter: brightness(1.1); }
+  #drawFilterBtn.active { background: var(--draw); border-color: var(--draw); }
+  #drawControls { display: none; gap: 6px; align-items: center; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.22); }
+  #loadingBadge { position: absolute; top: 12px; left: 12px; z-index: 900; display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  #loadingBadge.show { display: flex; }
+  .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--grid); border-top-color: var(--accent); animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #panel { flex: 0 0 840px; max-width: 90%; background: var(--surface-1); border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; }
+  #panel h2 { font-size: 13px; margin: 0 0 4px; font-weight: 700; }
+  #panel .sub2 { font-size: 11.5px; color: var(--muted); margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .val-check-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 1px 0; }
+  .val-check-item .swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .row label { flex: 0 0 80px; font-size: 12px; color: var(--ink-2); }
+  .row select { flex: 1; min-width: 0; }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 1.5px 0; font-size: 13px; }
+  .stat-row .v { font-weight: 700; }
+  .stat-row .k { color: var(--muted); }
+  #chartWrap { margin-top: 14px; position: relative; height: 280px; width: 100%; }
+  #chartWrap canvas { width: 100% !important; height: 100% !important; }
+  #noFilterMsg { margin-top: 14px; padding: 16px 14px; background: var(--wash); border: 1px dashed var(--border); border-radius: 8px; font-size: 12.5px; color: var(--ink-2); text-align: center; line-height: 1.5; }
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  #legendBox { margin-top: 10px; max-height: 160px; overflow-y: auto; font-size: 11.5px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+  #toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 12px);
+    background: var(--ink-1); color: #fff; padding: 9px 14px; border-radius: 8px;
+    font-size: 12.5px; max-width: 480px; opacity: 0; pointer-events: none; transition: all .18s ease; z-index: 2000;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>POD Trend Explorer</h1>
+  <span class="sub">NM Office of the State Engineer — Points of Diversion · part of the <a href="#" id="parentLink">Water Data Viewer</a> family</span>
+  <span class="spacer"></span>
+</header>
+
+<div id="body">
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="drawOverlay">
+      <button id="drawFilterBtn" title="Draw a polygon on the map to select points of diversion inside it">⬠ Draw filter area</button>
+      <span id="drawControls">
+        <button id="drawFinishBtn" class="small" disabled>Finish</button>
+        <button id="drawUndoBtn" class="small" disabled>Undo point</button>
+        <button id="drawCancelBtn" class="small">Cancel</button>
+      </span>
+    </div>
+    <div id="loadingBadge"><span class="spin"></span> Loading points of diversion…</div>
+  </div>
+  <div id="panel">
+    <h2>Plot a trend</h2>
+    <div class="sub2">This layer is one row per well/POD, not repeated measurements — so for each attribute you check, this averages that value across all sites inside the drawn filter, by year, and plots it as its own trend line (e.g. "has average well depth here gotten deeper over the decades?"). It's not a per-site history over time.</div>
+
+    <div class="row"><label>Date field</label><select id="dateField"><option value="">— pick a date field —</option></select></div>
+    <div class="row"><label>Value field(s)</label></div>
+    <div id="valueFieldChecks" class="row" style="flex-direction:column;align-items:stretch;gap:1px;max-height:360px;overflow-y:auto;margin-top:-4px"></div>
+
+    <div class="stat-row"><span class="k">Points loaded in view</span><span class="v" id="statLoaded">0</span></div>
+    <div class="stat-row" id="statFilteredRow" style="display:none"><span class="k">Inside drawn filter</span><span class="v" id="statFiltered">0</span></div>
+    <div class="stat-row"><span class="k">Plottable (valid date + value)</span><span class="v" id="statPlottable">0</span></div>
+
+    <button id="clearFilterLink" class="small" style="display:none;width:100%;margin-top:6px">Clear filter</button>
+
+    <div id="chartWrap" style="display:none"><canvas id="chart"></canvas></div>
+    <div id="legendBox"></div>
+    <div id="noFilterMsg">⬠ Draw a filter area on the map to plot a trend for the sites inside it.</div>
+    <div class="hint">Points with a missing or unparseable value for either chosen field are silently skipped, not treated as errors. Pan/zoom the map to load more points of diversion — data is fetched for whatever's currently in view, clamped to New Mexico.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+const LAYER_URL = 'https://services2.arcgis.com/qXZbWTdPDbTjl7Dy/arcgis/rest/services/OSE_Points_of_Diversion/FeatureServer/0';
+
+/* ============================== state ============================== */
+const state = {
+  map: null,
+  layer: null,
+  points: [],            // GeoJSON features currently loaded for the view
+  fields: [],             // raw ArcGIS field metadata
+  reqId: 0,
+  filterPolygon: null,    // { ring: [[lng,lat],...] closed }
+  filterPolygonLayer: null,
+  drawing: false,
+  drawPoints: [],
+  drawPreviewLayer: null,
+  dateField: null,
+  valueFields: [], // toggleable — one series per checked field
+  chart: null,
+};
+
+/* ============================== small helpers ============================== */
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg, ms = 4200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms);
+}
+function debounce(fn, wait) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; }
+
+/* ============================== rate-limit-safe fetch ============================== */
+const HOST_MAX_CONCURRENCY = 2;
+const HOST_MIN_GAP_MS = 150;
+const hostState = new Map();
+function hostKeyOf(u) { try { return new URL(u, location.href).host; } catch { return 'unknown'; } }
+function pumpHost(st) { while (st.active < HOST_MAX_CONCURRENCY && st.queue.length) { st.active++; st.queue.shift()(); } }
+function scheduleOnHost(url, task) {
+  const key = hostKeyOf(url);
+  let st = hostState.get(key);
+  if (!st) { st = { active: 0, queue: [], lastAt: 0 }; hostState.set(key, st); }
+  return new Promise((resolve, reject) => {
+    st.queue.push(() => {
+      const wait = Math.max(0, HOST_MIN_GAP_MS - (Date.now() - st.lastAt));
+      setTimeout(() => {
+        st.lastAt = Date.now();
+        task().then(r => { st.active--; pumpHost(st); resolve(r); }, e => { st.active--; pumpHost(st); reject(e); });
+      }, wait);
+    });
+    pumpHost(st);
+  });
+}
+async function rawFetchWithRetry(url, options, attempt) {
+  attempt = attempt || 0;
+  const r = await fetch(url, options);
+  if (r.status === 429 && attempt < 4) {
+    const ra = r.headers.get('Retry-After');
+    const delay = ra && !isNaN(+ra) ? (+ra) * 1000 : Math.min(8000, 700 * Math.pow(2, attempt));
+    await new Promise(res => setTimeout(res, delay));
+    return rawFetchWithRetry(url, options, attempt + 1);
+  }
+  return r;
+}
+function fetchLimited(url, options) { return scheduleOnHost(url, () => rawFetchWithRetry(url, options)); }
+function friendlyHttpError(status) {
+  if (status === 429) return 'rate-limited (HTTP 429) — please wait a moment and try again';
+  if (status === 503) return 'server temporarily unavailable (HTTP 503)';
+  return 'HTTP ' + status;
+}
+const CACHE_TTL_DATA = 3 * 60 * 1000;
+const CACHE_TTL_CAPS = 10 * 60 * 1000;
+const respCache = new Map();
+function cachedCall(key, ttlMs, factory) {
+  const hit = respCache.get(key);
+  if (hit && (Date.now() - hit.at) < hit.ttl) return hit.promise;
+  const p = factory().catch(e => { respCache.delete(key); throw e; });
+  respCache.set(key, { at: Date.now(), ttl: ttlMs, promise: p });
+  return p;
+}
+
+/* ============================== bbox helpers ============================== */
+const NM_BBOX = { minLon: -109.15, minLat: 31.25, maxLon: -102.9, maxLat: 37.1 };
+function bboxIntersect(a, b) {
+  if (!a) return b; if (!b) return a;
+  const minLon = Math.max(a.minLon, b.minLon), minLat = Math.max(a.minLat, b.minLat);
+  const maxLon = Math.min(a.maxLon, b.maxLon), maxLat = Math.min(a.maxLat, b.maxLat);
+  return (minLon >= maxLon || minLat >= maxLat) ? null : { minLon, minLat, maxLon, maxLat };
+}
+function mapViewBbox() {
+  const b = state.map.getBounds();
+  return { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() };
+}
+function queryBboxForView() { return bboxIntersect(mapViewBbox(), NM_BBOX); }
+function ptInRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function ringBbox(ring) {
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of ring) { minLon = Math.min(minLon, lng); maxLon = Math.max(maxLon, lng); minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat); }
+  return { minLon, minLat, maxLon, maxLat };
+}
+function pointInFilter(feature) {
+  if (!state.filterPolygon) return true;
+  const c = feature.geometry && feature.geometry.coordinates;
+  if (!c) return false;
+  return ptInRing(c[0], c[1], state.filterPolygon.ring);
+}
+
+/* ============================== ArcGIS layer ============================== */
+const PAGE_SIZE = 2000; // matches this service's Max Record Count
+const HARD_CAP = 20000;
+async function fetchLayerMeta() {
+  return cachedCall('meta:' + LAYER_URL, CACHE_TTL_CAPS, async () => {
+    const u = new URL(LAYER_URL);
+    u.searchParams.set('f', 'json');
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'service error');
+    return j;
+  });
+}
+async function fetchPointsPage(bbox, offset) {
+  const u = new URL(LAYER_URL + '/query');
+  u.searchParams.set('f', 'geojson');
+  u.searchParams.set('where', '1=1');
+  u.searchParams.set('outFields', '*');
+  u.searchParams.set('geometry', JSON.stringify({ xmin: bbox.minLon, ymin: bbox.minLat, xmax: bbox.maxLon, ymax: bbox.maxLat, spatialReference: { wkid: 4326 } }));
+  u.searchParams.set('geometryType', 'esriGeometryEnvelope');
+  u.searchParams.set('inSR', '4326');
+  u.searchParams.set('spatialRel', 'esriSpatialRelIntersects');
+  u.searchParams.set('resultRecordCount', String(PAGE_SIZE));
+  u.searchParams.set('resultOffset', String(offset));
+  return cachedCall('pts:' + u.toString(), CACHE_TTL_DATA, async () => {
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'query error');
+    if (!j.features) throw new Error('unexpected response (no features array)');
+    return j;
+  });
+}
+async function fetchAllPointsForView(bbox) {
+  let page = await fetchPointsPage(bbox, 0);
+  const all = page.features.slice();
+  let offset = all.length;
+  while (page.features.length === PAGE_SIZE && all.length < HARD_CAP) {
+    page = await fetchPointsPage(bbox, offset);
+    if (!page.features.length) break;
+    all.push(...page.features);
+    offset += page.features.length;
+  }
+  return all.slice(0, HARD_CAP);
+}
+
+/* ============================== map + loading ============================== */
+function initMap() {
+  const map = L.map('map', { zoomControl: true }).setView([34.4, -106.1], 7);
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri', maxZoom: 19,
+  }).addTo(map);
+  state.map = map;
+  state.layer = L.geoJSON(null, {
+    pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 4, color: '#2f6f4f', weight: 1.5, fillColor: '#2f6f4f', fillOpacity: 0.55 }),
+  }).addTo(map);
+
+  const debouncedReload = debounce(() => loadForCurrentView(), 500);
+  map.on('moveend', () => { if (!state.drawing) debouncedReload(); });
+  map.on('click', (e) => { if (state.drawing) addDrawPoint(e.latlng); });
+  map.on('dblclick', () => {
+    if (!state.drawing) return;
+    if (state.drawPoints.length > 1) state.drawPoints.pop();
+    if (state.drawPoints.length >= 3) finishDrawing();
+    else { updateDrawPreview(); toast('Need at least 3 points to close the polygon.'); }
+  });
+
+  loadForCurrentView();
+}
+async function loadForCurrentView() {
+  const bbox = queryBboxForView();
+  const myReq = ++state.reqId;
+  if (!bbox) {
+    state.layer.clearLayers(); state.points = [];
+    updateStats(); redrawChart();
+    toast('Current view is outside New Mexico — pan into the state to load points of diversion.');
+    return;
+  }
+  document.getElementById('loadingBadge').classList.add('show');
+  try {
+    const feats = await fetchAllPointsForView(bbox);
+    if (myReq !== state.reqId) return;
+    state.points = feats;
+    state.layer.clearLayers();
+    state.layer.addData({ type: 'FeatureCollection', features: feats });
+    applyFilterStyling();
+    updateStats();
+    redrawChart();
+  } catch (e) {
+    if (myReq !== state.reqId) return;
+    toast('Could not load points of diversion: ' + e.message);
+  } finally {
+    if (myReq === state.reqId) document.getElementById('loadingBadge').classList.remove('show');
+  }
+}
+
+/* ============================== filter visibility ============================== */
+function applyFilterStyling() {
+  state.layer.eachLayer(child => {
+    if (!child.feature || !child.setStyle) return;
+    const inFilter = pointInFilter(child.feature);
+    child.setStyle(inFilter
+      ? { radius: 4, color: '#2f6f4f', weight: 1.5, fillColor: '#2f6f4f', fillOpacity: 0.55, opacity: 1 }
+      : { radius: 4, color: '#2f6f4f', weight: 1.5, fillColor: '#2f6f4f', fillOpacity: 0.08, opacity: 0.2 });
+  });
+}
+function filteredPoints() { return state.points.filter(pointInFilter); }
+
+/* ============================== field pickers ============================== */
+function isDateField(f) { return f.type === 'esriFieldTypeDate'; }
+function isNumericField(f) { return /Integer|Double|Single/i.test(f.type || ''); }
+// Coordinate/geometry/ID fields (raw lat/long, x/y, easting/northing, object ids) aren't
+// water measurements — exclude them from the value-field picker even though they're numeric.
+function isGeoCoordField(f) {
+  return /^(x|y|lat|lon|long|latitude|longitude|point_x|point_y|globalid|objectid|shape_?len|shape_?area)$/i.test(f.name || '');
+}
+// Friendly labels from NMOSE's official WATERS_PODs data dictionary — the live ArcGIS
+// field names are truncated (10-char shapefile-era limit), so "depth_wate" etc. wouldn't
+// mean much on their own.
+const FIELD_LABELS = {
+  pod_basin: 'POD basin designator', pod_nbr: 'POD number', pod_suffix: 'POD suffix',
+  pod_name: 'Well name (owner-given)', tws: 'PLSS township', rng: 'PLSS range', sec: 'PLSS section',
+  landgrant: 'Land grant name', legal: 'Legal description', county: 'County',
+  start_date: 'Date drilling started', finish_dat: 'Date well completed', plug_date: 'Date well plugged',
+  pcw_rcv_da: 'Proof of completion received', elevation: 'Well elevation (ft)',
+  depth_well: 'Total well depth (ft)', grnd_wtr_s: 'Groundwater source type',
+  percent_sh: 'Percent shallow', depth_wate: 'Depth to water at completion (ft)',
+  log_file_d: 'Date record filed with OSE', sched_date: 'Date of last well schedule',
+  use_of_wel: 'Use of well', pump_type: 'Pump type', discharge: 'Discharge pipe size',
+  aquifer: 'Aquifer', sys_date: 'System record date', subdiv_nam: 'Subdivision name',
+  restrict_: 'Max. diversion allowed', estimate_y: 'Estimated yield (gpm)',
+  pod_status: 'POD status', casing_siz: 'Casing/hole diameter (in)', ditch_name: 'Ditch/acequia/spring name',
+  well_tag: 'OSE well tag ID',
+  static_lev: 'Static water level (ft) — post-drilling equilibrium depth to water, used in impairment analysis',
+  basin: 'Water right basin', status: 'Water right status', use_: 'Water right use',
+  total_div: 'Allowed diversion (acre-ft)', own_lname: 'Owner last name', own_fname: 'Owner first name',
+  city: 'City', state: 'State', wr_count: '# associated water rights', replaced: '# times replaced',
+};
+function fieldLabel(name, fallbackAlias) { return FIELD_LABELS[name] || fallbackAlias || name; }
+async function loadFieldPickers() {
+  let meta;
+  try { meta = await fetchLayerMeta(); }
+  catch (e) { toast('Could not load layer field list: ' + e.message); return; }
+  state.fields = meta.fields || [];
+  const dateSel = document.getElementById('dateField');
+  for (const f of state.fields.filter(isDateField)) {
+    const o = document.createElement('option'); o.value = f.name; o.textContent = fieldLabel(f.name, f.alias); dateSel.appendChild(o);
+  }
+  const valChecksEl = document.getElementById('valueFieldChecks');
+  const numericFields = state.fields.filter(f => isNumericField(f) && !isGeoCoordField(f));
+  numericFields.forEach((f, i) => {
+    const row = document.createElement('label');
+    row.className = 'val-check-item';
+    row.innerHTML = `<input type="checkbox" value="${esc(f.name)}"><span class="swatch" style="background:${valueFieldColor(f.name, i)}"></span><span>${esc(fieldLabel(f.name, f.alias))}</span>`;
+    row.querySelector('input').onchange = (e) => {
+      if (e.target.checked) state.valueFields.push(f.name);
+      else state.valueFields = state.valueFields.filter(n => n !== f.name);
+      redrawChart();
+    };
+    valChecksEl.appendChild(row);
+  });
+  dateSel.onchange = () => { state.dateField = dateSel.value || null; redrawChart(); };
+
+  // Sensible starting point — still just toggles, fully changeable.
+  const defaultDate = 'finish_dat', defaultValue = 'depth_well';
+  if (state.fields.some(f => f.name === defaultDate)) { dateSel.value = defaultDate; state.dateField = defaultDate; }
+  const defaultCb = valChecksEl.querySelector(`input[value="${defaultValue}"]`);
+  if (defaultCb) { defaultCb.checked = true; state.valueFields = [defaultValue]; }
+  redrawChart();
+}
+
+/* ============================== chart ============================== */
+const CHART_PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#9A6324', '#000075', '#808000', '#800000', '#000000'];
+const fieldColorMap = new Map();
+function valueFieldColor(name, fallbackIndex) {
+  if (!fieldColorMap.has(name)) fieldColorMap.set(name, CHART_PALETTE[fieldColorMap.size % CHART_PALETTE.length]);
+  return fieldColorMap.get(name);
+}
+function parseArcgisDate(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (isFinite(n) && n > 0) return new Date(n); // ArcGIS dates are epoch millis
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function updateStats() {
+  document.getElementById('statLoaded').textContent = state.points.length.toLocaleString();
+  const hasFilter = !!state.filterPolygon;
+  document.getElementById('statFilteredRow').style.display = hasFilter ? '' : 'none';
+  document.getElementById('clearFilterLink').style.display = hasFilter ? '' : 'none';
+  if (hasFilter) document.getElementById('statFiltered').textContent = filteredPoints().length.toLocaleString();
+}
+function redrawChart() {
+  const dateField = state.dateField, valueFields = state.valueFields;
+  const canvas = document.getElementById('chart');
+  const chartWrap = document.getElementById('chartWrap');
+  const legendBox = document.getElementById('legendBox');
+  const noFilterMsg = document.getElementById('noFilterMsg');
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+  legendBox.innerHTML = '';
+
+  if (!state.filterPolygon) {
+    chartWrap.style.display = 'none';
+    noFilterMsg.style.display = '';
+    document.getElementById('statPlottable').textContent = '0';
+    return;
+  }
+  noFilterMsg.style.display = 'none';
+  chartWrap.style.display = '';
+
+  if (!dateField || !valueFields.length) {
+    document.getElementById('statPlottable').textContent = '0';
+    return;
+  }
+  const pool = filteredPoints();
+  let plottable = 0;
+
+  // Average by year per selected field — one line series per attribute, regardless of
+  // how many sites feed into it. Each point on a line is the mean of all sites' values
+  // for that field in that year (within the drawn filter).
+  const datasets = valueFields.map(valueField => {
+    const buckets = new Map(); // year -> { sum, count }
+    for (const f of pool) {
+      const props = f.properties || {};
+      const d = parseArcgisDate(props[dateField]);
+      const v = props[valueField];
+      if (!d || v === null || v === undefined || v === '' || !isFinite(+v)) continue;
+      const year = d.getFullYear();
+      let b = buckets.get(year);
+      if (!b) { b = { sum: 0, count: 0 }; buckets.set(year, b); }
+      b.sum += +v; b.count += 1;
+    }
+    const years = [...buckets.keys()].sort((a, b) => a - b);
+    plottable += years.reduce((acc, y) => acc + buckets.get(y).count, 0);
+    const c = valueFieldColor(valueField);
+    return {
+      label: fieldLabel(valueField, state.fields.find(f => f.name === valueField)?.alias),
+      data: years.map(y => ({ x: new Date(y, 0, 1).getTime(), y: buckets.get(y).sum / buckets.get(y).count, _count: buckets.get(y).count, _field: valueField })),
+      borderColor: c, backgroundColor: c,
+      pointRadius: 3, pointHoverRadius: 6, borderWidth: 2, showLine: true, tension: 0.15,
+    };
+  });
+  const yTitle = valueFields.length > 1 ? 'Average value per year (see legend)' : 'Average ' + fieldLabel(valueFields[0], state.fields.find(f => f.name === valueFields[0])?.alias) + ' per year';
+  legendBox.innerHTML = valueFields.length > 1
+    ? `<div class="hint">Each line is the yearly average across all sites inside the filter. Click a series in the chart legend above to show/hide it.</div>`
+    : `<div class="hint">Each point is the average across all sites inside the filter for that year.</div>`;
+
+  document.getElementById('statPlottable').textContent = plottable.toLocaleString();
+  if (!plottable) return;
+
+  // Defer creation one frame so the browser has definitely finished laying out the
+  // chartWrap we just unhid — otherwise Chart.js's responsive sizing can measure a
+  // zero-size container. Let Chart.js manage the canvas's actual pixel/DPR sizing itself
+  // (that's what responsive + maintainAspectRatio:false + CSS width/height:100% is for);
+  // don't fight it with manual canvas.width/height math.
+  requestAnimationFrame(() => {
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    try {
+      state.chart = new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: valueFields.length > 1 },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0] ? new Date(items[0].raw.x).getFullYear() : '',
+              label: (item) => {
+                const fLabel = valueFields.length > 1 ? fieldLabel(item.raw._field) + ' — ' : '';
+                return `${fLabel}avg ${item.raw.y.toLocaleString(undefined, { maximumFractionDigits: 1 })} (${item.raw._count.toLocaleString()} site${item.raw._count === 1 ? '' : 's'})`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            title: { display: true, text: fieldLabel(dateField, state.fields.find(f => f.name === dateField)?.alias) },
+            ticks: { callback: (val) => new Date(val).getFullYear() },
+          },
+          y: { title: { display: true, text: yTitle } },
+        },
+      },
+      });
+    } catch (e) {
+      toast('Could not render chart: ' + e.message);
+    }
+  });
+}
+
+/* ============================== draw-a-filter-polygon UI ============================== */
+function updateDrawPreview() {
+  if (state.drawPreviewLayer) { state.map.removeLayer(state.drawPreviewLayer); state.drawPreviewLayer = null; }
+  if (state.drawPoints.length) {
+    const group = L.featureGroup();
+    L.polyline(state.drawPoints, { color: '#ff6600', weight: 2, dashArray: '5 4', interactive: false }).addTo(group);
+    for (const p of state.drawPoints) L.circleMarker(p, { radius: 4, color: '#ff6600', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false }).addTo(group);
+    group.addTo(state.map);
+    state.drawPreviewLayer = group;
+  }
+  document.getElementById('drawFinishBtn').disabled = state.drawPoints.length < 3;
+  document.getElementById('drawUndoBtn').disabled = state.drawPoints.length === 0;
+}
+function addDrawPoint(latlng) { state.drawPoints.push(latlng); updateDrawPreview(); }
+function undoDrawPoint() { state.drawPoints.pop(); updateDrawPreview(); }
+function startDrawing() {
+  clearFilter();
+  state.drawing = true;
+  state.drawPoints = [];
+  state.map.doubleClickZoom.disable();
+  document.getElementById('drawFilterBtn').style.display = 'none';
+  document.getElementById('drawControls').style.display = 'inline-flex';
+  document.getElementById('drawFilterBtn').classList.remove('active');
+  updateDrawPreview();
+  toast('Click the map to place points, then Finish (or double-click) — 3+ points needed.');
+}
+function stopDrawingUI() {
+  state.drawing = false;
+  state.map.doubleClickZoom.enable();
+  if (state.drawPreviewLayer) { state.map.removeLayer(state.drawPreviewLayer); state.drawPreviewLayer = null; }
+  state.drawPoints = [];
+  document.getElementById('drawControls').style.display = 'none';
+  document.getElementById('drawFilterBtn').style.display = '';
+}
+function cancelDrawing() { stopDrawingUI(); }
+function finishDrawing() {
+  if (state.drawPoints.length < 3) return;
+  const ring = state.drawPoints.map(p => [p.lng, p.lat]);
+  ring.push(ring[0]);
+  state.filterPolygon = { ring, bbox: ringBbox(ring) };
+  state.filterPolygonLayer = L.polygon(state.drawPoints, { color: '#ff6600', weight: 2, dashArray: '6 4', fillOpacity: 0.05, fillColor: '#ff6600', interactive: false }).addTo(state.map);
+  stopDrawingUI();
+  document.getElementById('drawFilterBtn').textContent = '✕ Clear filter';
+  document.getElementById('drawFilterBtn').title = 'Remove the polygon filter';
+  document.getElementById('drawFilterBtn').classList.add('active');
+  applyFilterStyling();
+  updateStats();
+  redrawChart();
+  toast('Filter applied — chart now reflects sites inside the drawn area.');
+}
+function clearFilter() {
+  const had = !!state.filterPolygon;
+  state.filterPolygon = null;
+  if (state.filterPolygonLayer) { state.map.removeLayer(state.filterPolygonLayer); state.filterPolygonLayer = null; }
+  document.getElementById('drawFilterBtn').textContent = '⬠ Draw filter area';
+  document.getElementById('drawFilterBtn').title = 'Draw a polygon on the map to select points of diversion inside it';
+  document.getElementById('drawFilterBtn').classList.remove('active');
+  if (had) { applyFilterStyling(); updateStats(); redrawChart(); }
+}
+function toggleDrawFilter() {
+  if (state.filterPolygon) clearFilter();
+  else if (!state.drawing) startDrawing();
+}
+
+/* ============================== wire up ============================== */
+document.getElementById('drawFilterBtn').onclick = () => toggleDrawFilter();
+document.getElementById('drawFinishBtn').onclick = () => finishDrawing();
+document.getElementById('drawUndoBtn').onclick = () => undoDrawPoint();
+document.getElementById('drawCancelBtn').onclick = () => cancelDrawing();
+document.getElementById('clearFilterLink').onclick = () => clearFilter();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.drawing) cancelDrawing(); });
+document.getElementById('parentLink').onclick = (e) => {
+  e.preventDefault();
+  toast('Open water-data-viewer.html separately — this tool doesn\'t auto-launch it from here.');
+};
+
+initMap();
+loadFieldPickers();
+</script>
+</body>
+</html>
