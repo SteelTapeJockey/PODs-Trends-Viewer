@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POD Trend Explorer — New Mexico</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
+<style>
+  :root {
+    --page: #f6f7f5; --surface-1: #ffffff; --ink-1: #1c231f; --ink-2: #4b564e;
+    --muted: #7c8a7f; --border: #d9e0da; --grid: #e7ece7; --wash: #eef2ee;
+    --accent: #2f6f4f; --accent-ink: #ffffff; --draw: #ff6600;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink-1); background: var(--page); display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--surface-1); border-bottom: 1px solid var(--border); flex: 0 0 auto; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; font-weight: 700; margin: 0; white-space: nowrap; }
+  header .sub { font-size: 13px; color: var(--muted); white-space: nowrap; }
+  header .sub a { color: var(--muted); }
+  .spacer { flex: 1; }
+  select, button {
+    font: inherit; border: 1px solid var(--border); background: var(--surface-1); color: var(--ink-1);
+    border-radius: 6px; padding: 6px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--wash); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:hover { filter: brightness(1.08); }
+  button.small { padding: 4px 8px; font-size: 12px; }
+  #body { flex: 1; display: flex; min-height: 0; }
+  #mapWrap { position: relative; flex: 1 1 55%; min-width: 0; }
+  #map { position: absolute; inset: 0; }
+  #drawOverlay { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 950; display: flex; gap: 8px; align-items: center; }
+  #drawFilterBtn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 14px; padding: 11px 20px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.28); display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  #drawFilterBtn:hover { filter: brightness(1.1); }
+  #drawFilterBtn.active { background: var(--draw); border-color: var(--draw); }
+  #drawControls { display: none; gap: 6px; align-items: center; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 7px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.22); }
+  #loadingBadge { position: absolute; top: 12px; left: 12px; z-index: 900; display: none; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+  #basemapControl { position: absolute; top: 12px; right: 12px; z-index: 950; background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,.2); padding: 2px 4px; }
+  #basemapSelect { border: none; background: transparent; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--ink-1); padding: 6px 4px; cursor: pointer; }
+  #basemapSelect:focus { outline: none; }
+  #loadingBadge.show { display: flex; }
+  .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--grid); border-top-color: var(--accent); animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #filterPanel { flex: 0 0 auto; width: 300px; min-width: 180px; max-width: 640px; background: var(--surface-1); border-right: 1px solid var(--border); overflow-y: auto; padding: 14px; }
+  #panel { flex: 0 0 auto; width: 840px; min-width: 340px; max-width: 1400px; background: var(--surface-1); border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; }
+  .splitter { flex: 0 0 7px; align-self: stretch; cursor: ew-resize; position: relative; background: var(--page); }
+  .splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: var(--border); }
+  .splitter:hover::after, .splitter.dragging::after { left: 2px; width: 3px; background: var(--accent); border-radius: 2px; }
+  .side-panel h2 { font-size: 13px; margin: 0 0 4px; font-weight: 700; }
+  .side-panel .sub2 { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+  .filter-section-title { font-size: 11px; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .02em; margin: 14px 0 4px; }
+  .filter-section-title:first-of-type { margin-top: 4px; }
+  .hint-inline { font-weight: 400; text-transform: none; color: var(--muted); letter-spacing: normal; font-size: 12px; }
+  .check-list { height: 220px; max-height: 600px; min-height: 60px; overflow-y: auto; resize: vertical; display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; border: 1px solid var(--grid); border-radius: 6px; padding: 4px 6px; }
+  .check-item { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; line-height: 1.15; }
+  .check-item input[type="checkbox"] { margin: 0; flex: 0 0 auto; }
+  .check-item .swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .check-item .count { margin-left: auto; color: var(--muted); font-size: 11px; padding-left: 8px; white-space: nowrap; }
+  .code-tag { color: var(--muted); font-size: 10.5px; }
+  .time-slider { position: relative; height: 28px; margin-top: 6px; }
+  .time-slider-track { position: absolute; top: 12px; left: 0; right: 0; height: 4px; background: var(--grid); border-radius: 2px; }
+  .time-slider-fill { position: absolute; top: 0; height: 4px; background: var(--accent); border-radius: 2px; }
+  .time-range-input {
+    position: absolute; top: 0; left: 0; width: 100%; margin: 0; height: 28px;
+    background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none;
+  }
+  .time-range-input::-webkit-slider-runnable-track { background: transparent; }
+  .time-range-input::-moz-range-track { background: transparent; }
+  .time-range-input::-webkit-slider-thumb {
+    pointer-events: auto; -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; border-radius: 50%; margin-top: 7px;
+    background: var(--accent); border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); cursor: pointer;
+  }
+  .time-range-input::-moz-range-thumb {
+    pointer-events: auto; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--accent); border: 2px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,.35); cursor: pointer;
+  }
+  .time-slider-labels { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-weight: 600; }
+  .time-slider-labels span { flex: 0 0 auto; }
+  .time-num-input { width: 62px; font: inherit; font-size: 12px; font-weight: 600; padding: 3px 5px; border: 1px solid var(--border); border-radius: 5px; text-align: center; }
+  .vertex-handle { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2.5px solid var(--draw); box-shadow: 0 1px 4px rgba(0,0,0,.35); cursor: grab; }
+  .vertex-handle:active { cursor: grabbing; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+  .val-check-item { display: flex; align-items: center; gap: 6px; font-size: 12.5px; padding: 2px 0; line-height: 1.15; flex: 0 0 240px; }
+  .val-check-item input[type="checkbox"] { margin: 0; flex: 0 0 auto; }
+  .val-check-item .swatch { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+  .row label { flex: 0 0 80px; font-size: 12px; color: var(--ink-2); }
+  .row select { flex: 1; min-width: 0; }
+  .stat-row { display: flex; align-items: baseline; justify-content: space-between; padding: 1.5px 0; font-size: 13px; }
+  .stat-row .v { font-weight: 700; }
+  .stat-row .k { color: var(--muted); }
+  #chartWrap { margin-top: 14px; position: relative; height: 560px; width: 100%; }
+  #chartWrap canvas { width: 100% !important; height: 100% !important; }
+  #noFilterMsg { margin-top: 14px; padding: 16px 14px; background: var(--wash); border: 1px dashed var(--border); border-radius: 8px; font-size: 13.5px; color: var(--ink-2); text-align: center; line-height: 1.5; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  #legendBox { margin-top: 10px; max-height: 160px; overflow-y: auto; font-size: 11.5px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+  #statsSummary { margin-top: 16px; }
+  #statsSummary h3 { font-size: 12px; margin: 0 0 6px; font-weight: 700; color: var(--ink-2); }
+  .stats-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .stats-table th, .stats-table td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--grid); }
+  .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
+  .stats-table thead th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; border-bottom: 2px solid var(--border); }
+  .stats-table tbody tr:hover { background: var(--wash); }
+  .stats-table .field-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  #toast {
+    position: fixed; left: 50%; bottom: 22px; transform: translate(-50%, 12px);
+    background: var(--ink-1); color: #fff; padding: 9px 14px; border-radius: 8px;
+    font-size: 13.5px; max-width: 480px; opacity: 0; pointer-events: none; transition: all .18s ease; z-index: 2000;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .pod-popup { font-size: 12px; max-height: 260px; overflow-y: auto; }
+  .pod-popup table { border-collapse: collapse; width: 100%; }
+  .pod-popup th, .pod-popup td { text-align: left; padding: 2px 6px 2px 0; vertical-align: top; border-bottom: 1px solid #eee; }
+  .pod-popup th { color: var(--ink-2); font-weight: 600; white-space: nowrap; padding-right: 10px; }
+  .pod-popup td { color: var(--ink-1); }
+  .pod-popup-link { display: block; margin-top: 8px; padding: 6px 8px; background: var(--accent); color: var(--accent-ink); text-align: center; border-radius: 6px; font-weight: 700; text-decoration: none; font-size: 12px; }
+  .pod-popup-link:hover { filter: brightness(1.08); }
+  .leaflet-popup-content { margin: 10px 12px; }
+  .leaflet-popup-content-wrapper { border-radius: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>POD Trend Explorer</h1>
+  <span class="sub">NM Office of the State Engineer — Points of Diversion · part of the <a href="#" id="parentLink">Water Data Viewer</a> family</span>
+  <span class="spacer"></span>
+</header>
+
+<div id="body">
+  <div id="filterPanel" class="side-panel">
+    <h2>Filters</h2>
+    <div class="sub2">These control which points appear on the map and feed the chart — they apply on top of any drawn area filter. Status/use lists reload as you pan since they're computed from what's currently loaded; the date range is by "date well completed."</div>
+
+    <div class="filter-section-title">POD status <span class="hint-inline">(water right status)</span></div>
+    <div id="statusChecks" class="check-list"></div>
+
+    <div class="filter-section-title">POD use <span class="hint-inline">(top 5 loaded shown by default)</span></div>
+    <div id="useChecks" class="check-list"></div>
+
+    <div class="filter-section-title">Date range <span class="hint-inline">(date well completed — defaults to full period of record)</span></div>
+    <div class="time-slider">
+      <div class="time-slider-track"><div class="time-slider-fill" id="timeSliderFill"></div></div>
+      <input type="range" id="timeFrom" class="time-range-input">
+      <input type="range" id="timeTo" class="time-range-input">
+    </div>
+    <div class="time-slider-labels">
+      <input type="number" id="timeFromNum" class="time-num-input">
+      <span>to</span>
+      <input type="number" id="timeToNum" class="time-num-input">
+    </div>
+    <button id="timeResetBtn" class="small" style="width:100%;margin:6px 0 14px">Reset date range</button>
+
+    <div class="stat-row"><span class="k">Visible on map</span><span class="v" id="statVisible">0</span></div>
+  </div>
+  <div class="splitter" id="filterSplitter" title="Drag to resize"></div>
+  <div id="mapWrap">
+    <div id="map"></div>
+    <div id="drawOverlay">
+      <button id="drawFilterBtn" title="Draw a polygon on the map to select points of diversion inside it">⬠ Draw filter area</button>
+      <span id="drawControls">
+        <button id="drawFinishBtn" class="small" disabled>Finish</button>
+        <button id="drawUndoBtn" class="small" disabled>Undo point</button>
+        <button id="drawCancelBtn" class="small">Cancel</button>
+      </span>
+    </div>
+    <div id="loadingBadge"><span class="spin"></span> <span id="loadingText">Loading points of diversion…</span></div>
+    <div id="basemapControl" title="Choose a basemap">
+      <select id="basemapSelect">
+        <option value="topo" selected>Topographic</option>
+        <option value="imagery">Satellite imagery</option>
+        <option value="streets">Streets</option>
+        <option value="gray">Light gray</option>
+        <option value="dark">Dark gray</option>
+      </select>
+    </div>
+  </div>
+  <div class="splitter" id="panelSplitter" title="Drag to resize"></div>
+  <div id="panel" class="side-panel">
+    <h2>Plot a trend</h2>
+    <div class="sub2">This layer is one row per well/POD, not repeated measurements — so for each attribute you check, this averages that value across all sites inside the drawn filter, by year, and plots it as its own trend line (e.g. "has average well depth here gotten deeper over the decades?"). It's not a per-site history over time.</div>
+
+    <div class="row"><label>Date field</label><span style="font-size:13px">Date well completed</span></div>
+    <div class="row"><label>Value field(s)</label></div>
+    <div id="valueFieldChecks" style="display:flex;flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:2px 24px;max-height:120px;overflow-y:auto;margin-top:-2px"></div>
+
+    <div class="stat-row"><span class="k">Points loaded in view</span><span class="v" id="statLoaded">0</span></div>
+    <div class="stat-row" id="statFilteredRow" style="display:none"><span class="k">Inside drawn filter</span><span class="v" id="statFiltered">0</span></div>
+    <div class="stat-row"><span class="k">Plottable (valid date + value)</span><span class="v" id="statPlottable">0</span></div>
+
+    <button id="clearFilterLink" class="small" style="display:none;width:100%;margin-top:6px">Clear filter</button>
+
+    <div id="chartWrap" style="display:none"><canvas id="chart"></canvas></div>
+    <div id="legendBox"></div>
+    <div id="statsSummary"></div>
+    <div id="noFilterMsg">⬠ Draw a filter area on the map to plot a trend for the sites inside it.</div>
+    <div class="hint">Points with a missing or unparseable value for either chosen field are silently skipped, not treated as errors. Data is fetched for whatever's currently in view (clamped to New Mexico) — if a view has too many points to load at once, you'll be asked to zoom in or draw a smaller area.</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+'use strict';
+
+const LAYER_URL = 'https://services2.arcgis.com/qXZbWTdPDbTjl7Dy/arcgis/rest/services/OSE_Points_of_Diversion/FeatureServer/0';
+
+/* ============================== state ============================== */
+const state = {
+  map: null,
+  clusterGroup: null,
+  basemapLayer: null,
+  markerIndex: [], // [{ feature, marker }] for currently visible (status/use-filtered) points
+  points: [],            // GeoJSON features currently loaded for the view
+  fields: [],             // raw ArcGIS field metadata
+  reqId: 0,
+  filterPolygon: null,    // { ring: [[lng,lat],...] closed }
+  filterPolygonLayer: null,
+  filterHandlesLayer: null, // draggable vertex handles for editing the drawn boundary
+  drawing: false,
+  drawPoints: [],
+  drawPreviewLayer: null,
+  dateField: 'finish_dat', // the only usable date field — no picker needed
+  valueFields: [], // toggleable — one series per checked field
+  chart: null,
+  statusFilter: null, // Set of visible status codes ('__blank__' for empty) — null until populated
+  useFilter: null,    // Set of visible use codes ('__blank__' for empty) — null until populated
+  timeRange: null,    // { from, to } selected year range — null until populated
+  timeBounds: null,   // { lo, hi } full year range of currently loaded points
+};
+
+/* ============================== small helpers ============================== */
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg, ms = 4200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), ms);
+}
+function debounce(fn, wait) { let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); }; }
+
+/* ============================== rate-limit-safe fetch ============================== */
+const HOST_MAX_CONCURRENCY = 4;
+const HOST_MIN_GAP_MS = 120;
+const hostState = new Map();
+function hostKeyOf(u) { try { return new URL(u, location.href).host; } catch { return 'unknown'; } }
+function pumpHost(st) { while (st.active < HOST_MAX_CONCURRENCY && st.queue.length) { st.active++; st.queue.shift()(); } }
+function scheduleOnHost(url, task) {
+  const key = hostKeyOf(url);
+  let st = hostState.get(key);
+  if (!st) { st = { active: 0, queue: [], lastAt: 0 }; hostState.set(key, st); }
+  return new Promise((resolve, reject) => {
+    st.queue.push(() => {
+      const wait = Math.max(0, HOST_MIN_GAP_MS - (Date.now() - st.lastAt));
+      setTimeout(() => {
+        st.lastAt = Date.now();
+        task().then(r => { st.active--; pumpHost(st); resolve(r); }, e => { st.active--; pumpHost(st); reject(e); });
+      }, wait);
+    });
+    pumpHost(st);
+  });
+}
+async function rawFetchWithRetry(url, options, attempt) {
+  attempt = attempt || 0;
+  const r = await fetch(url, options);
+  if (r.status === 429 && attempt < 4) {
+    const ra = r.headers.get('Retry-After');
+    const delay = ra && !isNaN(+ra) ? (+ra) * 1000 : Math.min(8000, 700 * Math.pow(2, attempt));
+    await new Promise(res => setTimeout(res, delay));
+    return rawFetchWithRetry(url, options, attempt + 1);
+  }
+  return r;
+}
+function fetchLimited(url, options) { return scheduleOnHost(url, () => rawFetchWithRetry(url, options)); }
+function friendlyHttpError(status) {
+  if (status === 429) return 'rate-limited (HTTP 429) — please wait a moment and try again';
+  if (status === 503) return 'server temporarily unavailable (HTTP 503)';
+  return 'HTTP ' + status;
+}
+const CACHE_TTL_DATA = 3 * 60 * 1000;
+const CACHE_TTL_CAPS = 10 * 60 * 1000;
+const respCache = new Map();
+function cachedCall(key, ttlMs, factory) {
+  const hit = respCache.get(key);
+  if (hit && (Date.now() - hit.at) < hit.ttl) return hit.promise;
+  const p = factory().catch(e => { respCache.delete(key); throw e; });
+  respCache.set(key, { at: Date.now(), ttl: ttlMs, promise: p });
+  return p;
+}
+
+/* ============================== bbox helpers ============================== */
+const NM_BBOX = { minLon: -109.15, minLat: 31.25, maxLon: -102.9, maxLat: 37.1 };
+function bboxIntersect(a, b) {
+  if (!a) return b; if (!b) return a;
+  const minLon = Math.max(a.minLon, b.minLon), minLat = Math.max(a.minLat, b.minLat);
+  const maxLon = Math.min(a.maxLon, b.maxLon), maxLat = Math.min(a.maxLat, b.maxLat);
+  return (minLon >= maxLon || minLat >= maxLat) ? null : { minLon, minLat, maxLon, maxLat };
+}
+function mapViewBbox() {
+  const b = state.map.getBounds();
+  return { minLon: b.getWest(), minLat: b.getSouth(), maxLon: b.getEast(), maxLat: b.getNorth() };
+}
+function queryBboxForView() { return bboxIntersect(mapViewBbox(), NM_BBOX); }
+function ptInRing(lng, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+    if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+function ringBbox(ring) {
+  let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity;
+  for (const [lng, lat] of ring) { minLon = Math.min(minLon, lng); maxLon = Math.max(maxLon, lng); minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat); }
+  return { minLon, minLat, maxLon, maxLat };
+}
+function pointInFilter(feature) {
+  if (!state.filterPolygon) return true;
+  const c = feature.geometry && feature.geometry.coordinates;
+  if (!c) return false;
+  return ptInRing(c[0], c[1], state.filterPolygon.ring);
+}
+
+/* ============================== ArcGIS layer ============================== */
+const PAGE_SIZE = 2000; // matches this service's Max Record Count
+// Above this many matching records in the current view, we don't attempt to load/render them
+// all — that many raw points would be slow to fetch and would choke the browser regardless of
+// clustering. The person is told to zoom in or draw a smaller area instead.
+const VIEW_SOFT_CAP = 60000;
+function bboxGeometryParam(bbox) {
+  return JSON.stringify({ xmin: bbox.minLon, ymin: bbox.minLat, xmax: bbox.maxLon, ymax: bbox.maxLat, spatialReference: { wkid: 4326 } });
+}
+async function fetchLayerMeta() {
+  return cachedCall('meta:' + LAYER_URL, CACHE_TTL_CAPS, async () => {
+    const u = new URL(LAYER_URL);
+    u.searchParams.set('f', 'json');
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'service error');
+    return j;
+  });
+}
+async function fetchCountForView(bbox) {
+  const u = new URL(LAYER_URL + '/query');
+  u.searchParams.set('f', 'json');
+  u.searchParams.set('where', '1=1');
+  u.searchParams.set('returnCountOnly', 'true');
+  u.searchParams.set('geometry', bboxGeometryParam(bbox));
+  u.searchParams.set('geometryType', 'esriGeometryEnvelope');
+  u.searchParams.set('inSR', '4326');
+  u.searchParams.set('spatialRel', 'esriSpatialRelIntersects');
+  return cachedCall('count:' + u.toString(), CACHE_TTL_DATA, async () => {
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'count query error');
+    return j.count ?? 0;
+  });
+}
+async function fetchPointsPage(bbox, offset) {
+  const u = new URL(LAYER_URL + '/query');
+  u.searchParams.set('f', 'geojson');
+  u.searchParams.set('where', '1=1');
+  u.searchParams.set('outFields', '*');
+  u.searchParams.set('geometry', bboxGeometryParam(bbox));
+  u.searchParams.set('geometryType', 'esriGeometryEnvelope');
+  u.searchParams.set('inSR', '4326');
+  u.searchParams.set('spatialRel', 'esriSpatialRelIntersects');
+  u.searchParams.set('resultRecordCount', String(PAGE_SIZE));
+  u.searchParams.set('resultOffset', String(offset));
+  return cachedCall('pts:' + u.toString(), CACHE_TTL_DATA, async () => {
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(30000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'query error');
+    if (!j.features) throw new Error('unexpected response (no features array)');
+    return j;
+  });
+}
+// Fetch every page for the view concurrently (bounded by the host-level throttle above, so
+// this doesn't hammer the API any harder than one-at-a-time did — it just doesn't needlessly
+// wait for each page to finish before starting the next one).
+async function fetchAllPointsForView(bbox, total) {
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const offsets = Array.from({ length: pageCount }, (_, i) => i * PAGE_SIZE);
+  const pages = await Promise.all(offsets.map(offset => fetchPointsPage(bbox, offset)));
+  const all = [];
+  for (const page of pages) all.push(...page.features);
+  return all;
+}
+
+/* ============================== map + loading ============================== */
+function setLoadingText(msg) {
+  const el = document.getElementById('loadingText');
+  if (el) el.textContent = msg;
+}
+// A few free, no-API-key Esri basemaps covering the common use cases: topo for general
+// orientation, imagery for ground-truthing a site, streets for urban context, and the two
+// gray canvases for when the data itself (point colors, drawn filter) needs to stand out most.
+const BASEMAPS = {
+  topo: { label: 'Topographic', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Esri', maxZoom: 19 },
+  imagery: { label: 'Satellite imagery', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attribution: 'Esri', maxZoom: 19 },
+  streets: { label: 'Streets', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', attribution: 'Esri', maxZoom: 19 },
+  gray: { label: 'Light gray (best data contrast)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Esri', maxZoom: 16 },
+  dark: { label: 'Dark gray', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', attribution: 'Esri', maxZoom: 16 },
+};
+function setBasemap(key) {
+  const def = BASEMAPS[key] || BASEMAPS.topo;
+  if (state.basemapLayer) state.map.removeLayer(state.basemapLayer);
+  state.basemapLayer = L.tileLayer(def.url, { attribution: def.attribution, maxZoom: def.maxZoom }).addTo(state.map);
+  state.basemapLayer.bringToBack();
+}
+function initMap() {
+  const map = L.map('map', { zoomControl: true }).setView([34.4, -106.1], 7);
+  state.map = map;
+  setBasemap('topo');
+  // Marker clustering keeps pan/zoom/rendering responsive at tens of thousands of points —
+  // without it, that many raw circle markers freezes the browser regardless of how fast the
+  // data loads.
+  state.clusterGroup = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 55, disableClusteringAtZoom: 15, spiderfyOnMaxZoom: true });
+  map.addLayer(state.clusterGroup);
+
+  const debouncedReload = debounce(() => loadForCurrentView(), 500);
+  map.on('moveend', () => { if (!state.drawing) debouncedReload(); });
+  map.on('click', (e) => { if (state.drawing) addDrawPoint(e.latlng); });
+  map.on('dblclick', () => {
+    if (!state.drawing) return;
+    if (state.drawPoints.length > 1) state.drawPoints.pop();
+    if (state.drawPoints.length >= 3) finishDrawing();
+    else { updateDrawPreview(); toast('Need at least 3 points to close the polygon.'); }
+  });
+
+  loadForCurrentView();
+}
+async function loadForCurrentView() {
+  const bbox = queryBboxForView();
+  const myReq = ++state.reqId;
+  if (!bbox) {
+    state.points = [];
+    rebuildVisibleMarkers();
+    updateStats(); redrawChart();
+    toast('Current view is outside New Mexico — pan into the state to load points of diversion.');
+    return;
+  }
+  document.getElementById('loadingBadge').classList.add('show');
+  setLoadingText('Checking how many points are in view…');
+  try {
+    const total = await fetchCountForView(bbox);
+    if (myReq !== state.reqId) return;
+    if (total > VIEW_SOFT_CAP) {
+      state.points = [];
+      rebuildVisibleMarkers();
+      updateStats(); redrawChart();
+      toast(`${total.toLocaleString()} points are in this view — that's too many to load and render at once. Zoom in a bit or draw a smaller area (whole-state views can include hundreds of thousands of records).`, 8000);
+      return;
+    }
+    setLoadingText(`Loading ${total.toLocaleString()} points of diversion…`);
+    const feats = await fetchAllPointsForView(bbox, total);
+    if (myReq !== state.reqId) return;
+    state.points = feats;
+    populateUseChecks();
+    rebuildVisibleMarkers();
+    updateStats();
+    redrawChart();
+  } catch (e) {
+    if (myReq !== state.reqId) return;
+    toast('Could not load points of diversion: ' + e.message);
+  } finally {
+    if (myReq === state.reqId) document.getElementById('loadingBadge').classList.remove('show');
+  }
+}
+
+/* ============================== status/use filters + map coloring ============================== */
+// Default POD statuses shown on load — everything else (cancelled, expired, withdrawn, etc.)
+// starts hidden but can be toggled on in the left panel.
+const DEFAULT_STATUS_CODES = new Set(['PMT', 'LIC', 'DCL', 'ADJ']);
+const TOP_USE_COUNT = 5;
+const useColorMap = new Map();
+function useColor(code) {
+  if (!useColorMap.has(code)) useColorMap.set(code, CHART_PALETTE[useColorMap.size % CHART_PALETTE.length]);
+  return useColorMap.get(code);
+}
+function codeOf(raw) { const s = (raw ?? '').toString().trim(); return s === '' ? '__blank__' : s; }
+function statusLabel(code) {
+  if (code === '__blank__') return 'Blank / no status';
+  const f = state.fields.find(f => f.name === 'status');
+  return (f && decodeDomain(f, code)) || code;
+}
+function useLabel(code) {
+  if (code === '__blank__') return 'Blank / no use';
+  const f = state.fields.find(f => f.name === 'use_');
+  return (f && decodeDomain(f, code)) || code;
+}
+// A point is visible on the map (and counted in the chart) only if both its water-right
+// status and its use are currently toggled on — independent of the drawn polygon filter,
+// which further narrows the visible set down to a specific area.
+function isTimeFilterActive() {
+  return !!(state.timeRange && state.timeBounds && (state.timeRange.from > state.timeBounds.lo || state.timeRange.to < state.timeBounds.hi));
+}
+function pointVisible(feature) {
+  const props = feature.properties || {};
+  if (state.statusFilter && !state.statusFilter.has(codeOf(props.status))) return false;
+  if (state.useFilter && !state.useFilter.has(codeOf(props.use_))) return false;
+  if (isTimeFilterActive()) {
+    const d = parseSaneDate(props.finish_dat);
+    const y = d ? d.getFullYear() : null;
+    if (y === null || y < state.timeRange.from || y > state.timeRange.to) return false;
+  }
+  return true;
+}
+function pointColor(props) { return useColor(codeOf(props.use_)); }
+
+function populateStatusChecks() {
+  const el = document.getElementById('statusChecks');
+  const f = state.fields.find(f => f.name === 'status');
+  const codedValues = (f && f.domain && f.domain.codedValues) || [];
+  if (!state.statusFilter) state.statusFilter = new Set(DEFAULT_STATUS_CODES);
+  const codes = codedValues.map(cv => String(cv.code)).concat(['__blank__']);
+  el.innerHTML = '';
+  for (const code of codes) {
+    const row = document.createElement('label');
+    row.className = 'check-item';
+    const checked = state.statusFilter.has(code);
+    row.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}><span>${esc(statusLabel(code))} <span class="code-tag">(${esc(code)})</span></span>`;
+    row.querySelector('input').onchange = (e) => {
+      if (e.target.checked) state.statusFilter.add(code); else state.statusFilter.delete(code);
+      rebuildVisibleMarkers(); updateStats(); redrawChart();
+    };
+    el.appendChild(row);
+  }
+}
+function computeUseCounts() {
+  const counts = new Map();
+  for (const feat of state.points) {
+    const code = codeOf(feat.properties && feat.properties.use_);
+    counts.set(code, (counts.get(code) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+}
+function populateUseChecks() {
+  const el = document.getElementById('useChecks');
+  const counts = computeUseCounts();
+  if (!state.useFilter && counts.length) state.useFilter = new Set(counts.slice(0, TOP_USE_COUNT).map(([code]) => code));
+  el.innerHTML = '';
+  for (const [code, count] of counts) {
+    const row = document.createElement('label');
+    row.className = 'check-item';
+    const checked = state.useFilter.has(code);
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background = checked ? useColor(code) : 'transparent';
+    swatch.style.border = checked ? 'none' : '1px solid var(--border)';
+    const label = document.createElement('span');
+    label.innerHTML = `${esc(useLabel(code))} <span class="code-tag">(${esc(code)})</span>`;
+    const countEl = document.createElement('span');
+    countEl.className = 'count';
+    countEl.textContent = count.toLocaleString();
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = checked;
+    cb.onchange = () => {
+      if (cb.checked) { state.useFilter.add(code); swatch.style.background = useColor(code); swatch.style.border = 'none'; }
+      else { state.useFilter.delete(code); swatch.style.background = 'transparent'; swatch.style.border = '1px solid var(--border)'; }
+      rebuildVisibleMarkers(); updateStats(); redrawChart();
+    };
+    row.append(cb, swatch, label, countEl);
+    el.appendChild(row);
+  }
+}
+
+// Fallback only — the true bounds come from fetchGlobalDateBounds() (a statewide stats
+// query), not from whatever happens to be loaded in the current map view.
+function computeDateBoundsFromLoaded() {
+  let lo = Infinity, hi = -Infinity;
+  for (const feat of state.points) {
+    const d = parseSaneDate(feat.properties && feat.properties.finish_dat);
+    if (!d) continue;
+    const y = d.getFullYear();
+    if (y < lo) lo = y;
+    if (y > hi) hi = y;
+  }
+  if (!isFinite(lo)) { const cy = new Date().getFullYear(); lo = cy - 1; hi = cy; }
+  return { lo, hi };
+}
+async function fetchGlobalDateBounds() {
+  return cachedCall('dateBounds:' + LAYER_URL, CACHE_TTL_CAPS, async () => {
+    // Bound the query itself to a plausible range server-side — a single mistyped completion
+    // date (year 1002, 2099, etc.) would otherwise dominate a raw MIN/MAX and badly distort
+    // the "full period of record" default.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const u = new URL(LAYER_URL + '/query');
+    u.searchParams.set('f', 'json');
+    u.searchParams.set('where', `finish_dat >= DATE '${MIN_SANE_YEAR}-01-01' AND finish_dat <= DATE '${todayIso}'`);
+    u.searchParams.set('outStatistics', JSON.stringify([
+      { statisticType: 'min', onStatisticField: 'finish_dat', outStatisticFieldName: 'minDate' },
+      { statisticType: 'max', onStatisticField: 'finish_dat', outStatisticFieldName: 'maxDate' },
+    ]));
+    const r = await fetchLimited(u, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) throw new Error(friendlyHttpError(r.status));
+    const j = await r.json();
+    if (j.error) throw new Error(j.error.message || 'stats query error');
+    const attrs = j.features && j.features[0] && j.features[0].attributes;
+    if (!attrs) throw new Error('no statistics returned');
+    const lo = parseArcgisDate(attrs.minDate), hi = parseArcgisDate(attrs.maxDate);
+    if (!lo || !hi) throw new Error('unparseable min/max date');
+    // Client-side clamp too, in case the service ignores the where clause for some reason.
+    return {
+      lo: Math.max(lo.getFullYear(), MIN_SANE_YEAR),
+      hi: Math.min(hi.getFullYear(), maxSaneYear()),
+    };
+  });
+}
+function updateTimeSliderUI() {
+  if (!state.timeRange || !state.timeBounds) return;
+  const { lo, hi } = state.timeBounds;
+  document.getElementById('timeFromNum').value = state.timeRange.from;
+  document.getElementById('timeToNum').value = state.timeRange.to;
+  const span = Math.max(1, hi - lo);
+  const leftPct = ((state.timeRange.from - lo) / span) * 100;
+  const rightPct = ((state.timeRange.to - lo) / span) * 100;
+  const fill = document.getElementById('timeSliderFill');
+  fill.style.left = leftPct + '%';
+  fill.style.width = Math.max(0, rightPct - leftPct) + '%';
+}
+// Bounds/default come from the full statewide period of record, fetched once — not from
+// whatever's currently panned into view — so "reset" always means the true full history, and
+// the slider lets you pick any range within it regardless of what's loaded right now.
+async function initTimeFilter() {
+  let lo, hi;
+  try {
+    ({ lo, hi } = await fetchGlobalDateBounds());
+  } catch (e) {
+    ({ lo, hi } = computeDateBoundsFromLoaded());
+    toast('Could not load the full period of record — using what\u2019s currently loaded instead.');
+  }
+  state.timeBounds = { lo, hi };
+  state.timeRange = { from: lo, to: hi };
+  const fromEl = document.getElementById('timeFrom'), toEl = document.getElementById('timeTo');
+  const fromNumEl = document.getElementById('timeFromNum'), toNumEl = document.getElementById('timeToNum');
+  fromEl.min = toEl.min = fromNumEl.min = toNumEl.min = lo;
+  fromEl.max = toEl.max = fromNumEl.max = toNumEl.max = hi;
+  fromEl.value = fromNumEl.value = lo;
+  toEl.value = toNumEl.value = hi;
+  updateTimeSliderUI();
+  rebuildVisibleMarkers();
+  updateStats();
+  redrawChart();
+}
+
+/* ============================== marker rendering (clustered) ============================== */
+function markerStyleFor(feature) {
+  const color = pointColor(feature.properties || {});
+  const inFilter = pointInFilter(feature);
+  return inFilter
+    ? { radius: 4, color, weight: 1.5, fillColor: color, fillOpacity: 0.65, opacity: 1 }
+    : { radius: 4, color, weight: 1.5, fillColor: color, fillOpacity: 0.1, opacity: 0.25 };
+}
+function buildMarker(feature) {
+  const c = feature.geometry && feature.geometry.coordinates;
+  const marker = L.circleMarker([c[1], c[0]], markerStyleFor(feature));
+  marker.feature = feature;
+  marker.bindPopup(() => buildPopupHtml(feature), { maxWidth: 320, maxHeight: 280 });
+  return marker;
+}
+// Status/use filters change WHICH points exist at all (so cluster counts stay honest) — this
+// rebuilds the marker set from scratch. Called whenever new points load or a status/use
+// checkbox changes. Cheap in comparison to the fetch itself even at tens of thousands of points
+// (Leaflet.markercluster's chunkedLoading keeps this off the main thread in slices).
+function rebuildVisibleMarkers() {
+  if (!state.clusterGroup) return;
+  state.clusterGroup.clearLayers();
+  state.markerIndex = [];
+  const markers = [];
+  for (const feature of state.points) {
+    if (!pointVisible(feature)) continue;
+    const marker = buildMarker(feature);
+    state.markerIndex.push({ feature, marker });
+    markers.push(marker);
+  }
+  state.clusterGroup.addLayers(markers);
+}
+// The drawn polygon filter only dims points in/out — it never changes which points exist, so
+// this just restyles the already-built markers rather than rebuilding the cluster group.
+function applyPolygonStyling() {
+  for (const { feature, marker } of state.markerIndex) marker.setStyle(markerStyleFor(feature));
+}
+function filteredPoints() { return state.points.filter(p => pointVisible(p) && pointInFilter(p)); }
+
+// Only these fields (per NMOSE's WATERS_PODs data dictionary v8) are ever shown anywhere
+// in this app — date/value pickers and the point popup all filter against this list. Order
+// here is also the display order in the popup's attribute table.
+const ALLOWED_FIELDS = [
+  'pod_basin', 'county', 'finish_dat', 'depth_well', 'grnd_wtr_s', 'percent_sh', 'depth_wate',
+  'use_of_wel', 'pump_type', 'estimate_y', 'pod_status', 'ditch_name', 'utm_zone',
+  'datum', 'well_tag', 'static_lev', 'pod_file', 'status', 'use_', 'total_div',
+  'own_lname', 'own_fname', 'addr1', 'addr2', 'city', 'state', 'zip', 'contact_ln', 'contact_fn',
+  'nmwrrs_wrs', 'metered',
+];
+const ALLOWED_SET = new Set(ALLOWED_FIELDS);
+function isAllowedField(f) { return ALLOWED_SET.has(f.name); }
+
+function isDateField(f) { return f.type === 'esriFieldTypeDate'; }
+function isNumericField(f) { return /Integer|Double|Single/i.test(f.type || ''); }
+
+// Human-readable names, from the NMOSE WATERS_PODs data dictionary v8.
+const FIELD_LABELS = {
+  pod_basin: 'POD basin', county: 'County', finish_dat: 'Date well completed',
+  depth_well: 'Total well depth (ft)', grnd_wtr_s: 'Groundwater source type', percent_sh: 'Percent shallow',
+  depth_wate: 'Depth to water at completion (ft)', use_of_wel: 'Use of well', pump_type: 'Pump type',
+  estimate_y: 'Estimated yield (gpm)', pod_status: 'POD status',
+  ditch_name: 'Conveyance name', utm_zone: 'UTM zone',
+  datum: 'Coordinate datum', well_tag: 'OSE well tag ID', static_lev: 'Static water level (ft)',
+  pod_file: 'POD file label', status: 'Water right status', use_: 'Water right use',
+  total_div: 'Allowed diversion (acre-ft)', own_lname: 'Owner last name', own_fname: 'Owner first name',
+  addr1: 'Address line 1', addr2: 'Address line 2', city: 'City', state: 'State', zip: 'ZIP code',
+  contact_ln: 'Contact last name', contact_fn: 'Contact first name', nmwrrs_wrs: 'Water rights summary URL',
+  metered: 'Metered',
+  _count: 'Count of PODs',
+};
+// Definitions, likewise from the data dictionary — shown as hover tooltips on field labels.
+const FIELD_DEFS = {
+  pod_basin: 'Basin designator of the point of diversion.',
+  county: 'County in which the point of diversion is located.',
+  finish_dat: 'Date the well was completed.',
+  depth_well: 'Total depth of the well, to the nearest foot.',
+  grnd_wtr_s: 'Type of groundwater source: Artesian, Dry, Mixed, or Shallow.',
+  percent_sh: 'Percent of the well classified as shallow.',
+  depth_wate: 'Depth to water at completion of the well, to the nearest foot.',
+  use_of_wel: 'Stated use of the well.',
+  pump_type: 'Description of the pump type installed: Centrifugal, Submersible, Turbine, or Jet.',
+  estimate_y: 'Estimated yield of the well, in gallons per minute.',
+  pod_status: 'Recorded status of the point of diversion: Pending, Plugged, Capped, Inactive, or Active.',
+  ditch_name: 'Name of the ditch, acequia, or spring associated with this point of diversion.',
+  utm_zone: 'UTM coordinate reference system zone.',
+  datum: 'UTM coordinate reference system datum: NAD27 or NAD83.',
+  well_tag: 'OSE well tag identification number.',
+  static_lev: 'Depth to water once equilibrium is reached after drilling — used in impairment analysis and indicates whether the aquifer is under confinement.',
+  pod_file: "Combined POD basin, number, and suffix — this point of diversion's file label.",
+  status: 'Current status of the associated water right.',
+  use_: 'Specific use associated with the water right.',
+  total_div: 'Amount of water, in acre-feet, allowed to be diverted under this water right.',
+  own_lname: 'Last name of the applicant/owner of record.',
+  own_fname: 'First name of the applicant/owner of record.',
+  addr1: "First line of the owner's mailing address.",
+  addr2: "Second line of the owner's mailing address.",
+  city: "City of the owner's mailing address.",
+  state: "State of the owner's mailing address.",
+  zip: "USPS ZIP code of the owner's mailing address.",
+  contact_ln: 'Last name of the contact person for this record.',
+  contact_fn: 'First name of the contact person for this record.',
+  nmwrrs_wrs: 'Link to this record\u2019s summary page in the NM Water Rights Reporting System (NMWRRS).',
+  metered: 'Whether the point of diversion is metered. (Added to the live service after data dictionary v8 — undocumented there.)',
+  _count: 'Number of points of diversion with a valid completion date in that year — a count, not an average of any attribute.',
+};
+function fieldLabel(name, fallbackAlias) { return FIELD_LABELS[name] || fallbackAlias || name; }
+function fieldDef(name) { return FIELD_DEFS[name] || ''; }
+// Some coded fields (pod_basin, county, grnd_wtr_s, pod_status, status, use_, ...) carry a
+// coded-value domain straight from the ArcGIS service — decode "ACT" to "Active" etc. rather
+// than showing the raw code.
+function decodeDomain(f, raw) {
+  const dom = f && f.domain;
+  if (dom && dom.type === 'codedValue' && Array.isArray(dom.codedValues)) {
+    const hit = dom.codedValues.find(cv => String(cv.code) === String(raw));
+    if (hit) return hit.name;
+  }
+  return null;
+}
+
+// The layer already carries a pre-built, complete link to NM OSE's live Water Right
+// Summary report in nmwrrs_wrs — use it directly. Only a handful of older/edge-case
+// records lack it, in which case we fall back to building the URL ourselves from
+// pod_basin/pod_nbr/pod_suffix (the same basin/nbr/suffix query params NMWRRS expects).
+function nmwrrsSummaryUrl(props) {
+  const given = (props.nmwrrs_wrs ?? '').toString().trim();
+  if (given && /^https?:\/\//i.test(given)) return given;
+  const basin = (props.pod_basin ?? '').toString().trim();
+  const nbr = (props.pod_nbr ?? '').toString().trim();
+  if (!basin || !nbr) return null;
+  const suffix = (props.pod_suffix ?? '').toString().trim();
+  const qs = new URLSearchParams({ basin, name: 'WaterRightSummaryHTML.jrxml', nbr, suffix, type: 'WRHTML' });
+  return `https://nmwrrs.ose.nm.gov/ReportDispatcher?${qs.toString()}`;
+}
+function formatFieldValue(f, raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (isDateField(f)) { const d = parseArcgisDate(raw); return d ? esc(d.toLocaleDateString()) : null; }
+  const decoded = decodeDomain(f, raw);
+  if (decoded) return `${esc(decoded)} <span class="code-tag">(${esc(String(raw))})</span>`;
+  if (typeof raw === 'number') return esc(raw.toLocaleString());
+  return esc(String(raw));
+}
+function buildPopupHtml(feature) {
+  const props = feature.properties || {};
+  const byName = new Map(state.fields.map(f => [f.name, f]));
+  const rows = ALLOWED_FIELDS
+    .filter(name => name !== 'nmwrrs_wrs')
+    .map(name => {
+      const f = byName.get(name);
+      if (!f) return null;
+      const value = formatFieldValue(f, props[name]);
+      return value === null ? null : { label: fieldLabel(name, f.alias), def: fieldDef(name), value };
+    })
+    .filter(Boolean);
+  const table = rows.map(r => `<tr><th title="${esc(r.def)}">${esc(r.label)}</th><td>${r.value}</td></tr>`).join('');
+  const url = nmwrrsSummaryUrl(props);
+  const link = url
+    ? `<a class="pod-popup-link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Open OSE water rights summary →</a>`
+    : `<div class="hint" style="margin-top:6px">No POD basin/number on this record — can't link to a summary page.</div>`;
+  return `<div class="pod-popup"><table>${table}</table>${link}</div>`;
+}
+async function loadFieldPickers() {
+  let meta;
+  try { meta = await fetchLayerMeta(); }
+  catch (e) { toast('Could not load layer field list: ' + e.message); return; }
+  state.fields = meta.fields || [];
+  const valChecksEl = document.getElementById('valueFieldChecks');
+  // "Count of PODs" is a synthetic pseudo-field (not a real ArcGIS attribute) — checking it
+  // plots how many PODs have a completion date in each year, instead of averaging some value.
+  const pseudoCountField = { name: '_count', alias: 'Count of PODs' };
+  const numericFields = [pseudoCountField, ...state.fields.filter(f => isNumericField(f) && isAllowedField(f))];
+  numericFields.forEach((f, i) => {
+    const row = document.createElement('label');
+    row.className = 'val-check-item';
+    row.title = fieldDef(f.name);
+    row.innerHTML = `<input type="checkbox" value="${esc(f.name)}"><span class="swatch" style="background:${valueFieldColor(f.name, i)}"></span><span>${esc(fieldLabel(f.name, f.alias))}</span>`;
+    row.querySelector('input').onchange = (e) => {
+      if (e.target.checked) state.valueFields.push(f.name);
+      else state.valueFields = state.valueFields.filter(n => n !== f.name);
+      redrawChart();
+    };
+    valChecksEl.appendChild(row);
+  });
+
+  populateStatusChecks();
+  populateUseChecks();
+  rebuildVisibleMarkers();
+  updateStats();
+
+  // Sensible starting point — still just a toggle, fully changeable.
+  const defaultValue = 'depth_well';
+  const defaultCb = valChecksEl.querySelector(`input[value="${defaultValue}"]`);
+  if (defaultCb) { defaultCb.checked = true; state.valueFields = [defaultValue]; }
+  redrawChart();
+}
+
+/* ============================== chart ============================== */
+const CHART_PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#469990', '#9A6324', '#000075', '#808000', '#800000', '#000000'];
+const fieldColorMap = new Map();
+function valueFieldColor(name, fallbackIndex) {
+  if (!fieldColorMap.has(name)) fieldColorMap.set(name, CHART_PALETTE[fieldColorMap.size % CHART_PALETTE.length]);
+  return fieldColorMap.get(name);
+}
+function parseArcgisDate(v) {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  if (isFinite(n) && n > 0) return new Date(n); // ArcGIS dates are epoch millis
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+// Data-entry typos happen (e.g. a completion date entered as year 1002 or 2099) — treat any
+// date outside a plausible range as unusable rather than letting it skew averages, min/max
+// bounds, or the default date-slider range.
+const MIN_SANE_YEAR = 1800;
+function maxSaneYear() { return new Date().getFullYear(); }
+function parseSaneDate(v) {
+  const d = parseArcgisDate(v);
+  if (!d) return null;
+  const y = d.getFullYear();
+  return (y >= MIN_SANE_YEAR && y <= maxSaneYear()) ? d : null;
+}
+// Fields that represent a depth below the surface (well depth, depth to water, static water
+// level) — these get their own reversed axis (0 at top, increasing downward) so they read
+// like a cross-section, and never share that axis with a non-depth value like allowed
+// diversion, which would otherwise distort the scale.
+const DEPTH_FIELDS = new Set(['depth_well', 'depth_wate', 'static_lev']);
+function isDepthField(name) { return DEPTH_FIELDS.has(name); }
+function isCountField(name) { return name === '_count'; }
+function updateStats() {
+  document.getElementById('statLoaded').textContent = state.points.length.toLocaleString();
+  document.getElementById('statVisible').textContent = state.points.filter(pointVisible).length.toLocaleString();
+  const hasFilter = !!state.filterPolygon;
+  document.getElementById('statFilteredRow').style.display = hasFilter ? '' : 'none';
+  document.getElementById('clearFilterLink').style.display = hasFilter ? '' : 'none';
+  if (hasFilter) document.getElementById('statFiltered').textContent = filteredPoints().length.toLocaleString();
+}
+// Overall (all-years-combined) statistics for the currently plottable population of each
+// selected field — same valid-date + valid-value rule the chart itself uses, so the counts
+// line up with what's actually drawn. For the synthetic "count" field, there's no per-record
+// value to summarize, so this instead summarizes the distribution of per-year counts (e.g.
+// "most PODs completed in a single year" as the max).
+function computeFieldStats(pool, dateField, valueField) {
+  const vals = [];
+  if (isCountField(valueField)) {
+    const buckets = new Map();
+    for (const f of pool) {
+      const d = parseSaneDate((f.properties || {})[dateField]);
+      if (!d) continue;
+      const year = d.getFullYear();
+      buckets.set(year, (buckets.get(year) || 0) + 1);
+    }
+    vals.push(...buckets.values());
+  } else {
+    for (const f of pool) {
+      const props = f.properties || {};
+      const d = parseSaneDate(props[dateField]);
+      const v = props[valueField];
+      if (!d || v === null || v === undefined || v === '' || !isFinite(+v) || +v === 0) continue;
+      vals.push(+v);
+    }
+  }
+  if (!vals.length) return null;
+  const n = vals.length;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const mean = vals.reduce((a, b) => a + b, 0) / n;
+  const variance = n > 1 ? vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0; // sample std dev
+  const std = Math.sqrt(variance);
+  return { n, min, max, mean, std };
+}
+function renderStatsSummary(pool, dateField, valueFields) {
+  const el = document.getElementById('statsSummary');
+  if (!valueFields.length) { el.innerHTML = ''; return; }
+  const fmt = (x) => x.toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const rows = valueFields.map(vf => {
+    const c = valueFieldColor(vf);
+    const label = fieldLabel(vf, state.fields.find(f => f.name === vf)?.alias);
+    const stats = computeFieldStats(pool, dateField, vf);
+    const nameCell = `<span class="field-swatch" style="background:${c}"></span>${esc(label)}`;
+    if (!stats) return `<tr><td>${nameCell}</td><td colspan="5" style="text-align:center;color:var(--muted)">no valid data</td></tr>`;
+    return `<tr><td>${nameCell}</td><td>${stats.n.toLocaleString()}</td><td>${fmt(stats.min)}</td><td>${fmt(stats.max)}</td><td>${fmt(stats.mean)}</td><td>${fmt(stats.std)}</td></tr>`;
+  }).join('');
+  el.innerHTML = `<h3>Summary statistics — all years combined</h3>
+    <table class="stats-table">
+      <thead><tr><th>Field</th><th>Count</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+function redrawChart() {
+  const dateField = state.dateField, valueFields = state.valueFields;
+  const canvas = document.getElementById('chart');
+  const chartWrap = document.getElementById('chartWrap');
+  const legendBox = document.getElementById('legendBox');
+  const noFilterMsg = document.getElementById('noFilterMsg');
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+  legendBox.innerHTML = '';
+  document.getElementById('statsSummary').innerHTML = '';
+
+  if (!state.filterPolygon) {
+    chartWrap.style.display = 'none';
+    noFilterMsg.style.display = '';
+    document.getElementById('statPlottable').textContent = '0';
+    return;
+  }
+  noFilterMsg.style.display = 'none';
+  chartWrap.style.display = '';
+
+  if (!dateField || !valueFields.length) {
+    document.getElementById('statPlottable').textContent = '0';
+    return;
+  }
+  const pool = filteredPoints();
+  let plottable = 0;
+  renderStatsSummary(pool, dateField, valueFields);
+
+  // Average by year per selected field — one line series per attribute, regardless of how
+  // many sites feed into it. Each point on a line is the mean of all sites' values for that
+  // field in that year (within the drawn filter). Blank, non-numeric, and zero values are all
+  // excluded from the average, not just blanks — 0 in these fields (depth, diversion, yield,
+  // etc.) means "not recorded", not "measured as zero", so including it would silently pull
+  // every average down. The synthetic "count" field is different: its "value" per year is
+  // just how many PODs have a valid completion date that year, not an average of anything.
+  const datasets = valueFields.map(valueField => {
+    const isCount = isCountField(valueField);
+    const buckets = new Map(); // year -> { sum, count }
+    for (const f of pool) {
+      const props = f.properties || {};
+      const d = parseSaneDate(props[dateField]);
+      if (!d) continue;
+      if (isCount) {
+        const year = d.getFullYear();
+        let b = buckets.get(year);
+        if (!b) { b = { sum: 0, count: 0 }; buckets.set(year, b); }
+        b.sum += 1; b.count += 1;
+        continue;
+      }
+      const v = props[valueField];
+      if (v === null || v === undefined || v === '' || !isFinite(+v) || +v === 0) continue;
+      const year = d.getFullYear();
+      let b = buckets.get(year);
+      if (!b) { b = { sum: 0, count: 0 }; buckets.set(year, b); }
+      b.sum += +v; b.count += 1;
+    }
+    const years = [...buckets.keys()].sort((a, b) => a - b);
+    plottable += years.reduce((acc, y) => acc + buckets.get(y).count, 0);
+    const c = valueFieldColor(valueField);
+    return {
+      label: fieldLabel(valueField, state.fields.find(f => f.name === valueField)?.alias),
+      data: years.map(y => ({ x: new Date(y, 0, 1).getTime(), y: isCount ? buckets.get(y).count : buckets.get(y).sum / buckets.get(y).count, _count: buckets.get(y).count, _field: valueField })),
+      borderColor: c, backgroundColor: c,
+      pointRadius: 3, pointHoverRadius: 6, borderWidth: 2, showLine: true, tension: 0.15,
+      yAxisID: isDepthField(valueField) ? 'yDepth' : 'yOther',
+    };
+  });
+  const depthFields = valueFields.filter(isDepthField);
+  const otherFields = valueFields.filter(f => !isDepthField(f));
+  const hasDepth = depthFields.length > 0, hasOther = otherFields.length > 0;
+  const axisTitle = (fields, fallback) => {
+    if (fields.length > 1) return fallback;
+    const label = fieldLabel(fields[0], state.fields.find(f => f.name === fields[0])?.alias);
+    return isCountField(fields[0]) ? `${label} per year` : `Average ${label} per year`;
+  };
+  const depthTitle = hasDepth ? axisTitle(depthFields, 'Depth below surface (ft) — average per year (see legend)') : null;
+  const otherTitle = hasOther ? axisTitle(otherFields, 'Average value per year (see legend)') : null;
+  legendBox.innerHTML = valueFields.length > 1
+    ? `<div class="hint">Each line is the yearly average across all sites inside the filter (or, for "Count of PODs," the yearly total).${hasDepth && hasOther ? ' Depth measurements (well depth, depth to water, static level) use the left axis, reversed so 0 is at the surface; everything else uses the right axis.' : ''} Click a series in the chart legend above to show/hide it.</div>`
+    : `<div class="hint">${isCountField(valueFields[0]) ? 'Each point is the number of PODs with a valid completion date that year.' : 'Each point is the average across all sites inside the filter for that year.'}${hasDepth ? ' The axis is reversed so 0 (the surface) is at the top.' : ''}</div>`;
+
+  document.getElementById('statPlottable').textContent = plottable.toLocaleString();
+  if (!plottable) return;
+
+  // Defer creation one frame so the browser has definitely finished laying out the
+  // chartWrap we just unhid — otherwise Chart.js's responsive sizing can measure a
+  // zero-size container. Let Chart.js manage the canvas's actual pixel/DPR sizing itself
+  // (that's what responsive + maintainAspectRatio:false + CSS width/height:100% is for);
+  // don't fight it with manual canvas.width/height math.
+  requestAnimationFrame(() => {
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    try {
+      state.chart = new Chart(canvas.getContext('2d'), {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: valueFields.length > 1 },
+          tooltip: {
+            callbacks: {
+              title: (items) => items[0] ? new Date(items[0].raw.x).getFullYear() : '',
+              label: (item) => {
+                const fLabel = valueFields.length > 1 ? fieldLabel(item.raw._field) + ' — ' : '';
+                if (isCountField(item.raw._field)) return `${fLabel}${item.raw.y.toLocaleString()} POD${item.raw.y === 1 ? '' : 's'} completed`;
+                return `${fLabel}avg ${item.raw.y.toLocaleString(undefined, { maximumFractionDigits: 1 })} (${item.raw._count.toLocaleString()} site${item.raw._count === 1 ? '' : 's'})`;
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            title: { display: true, text: fieldLabel(dateField, state.fields.find(f => f.name === dateField)?.alias) },
+            ticks: { callback: (val) => new Date(val).getFullYear() },
+          },
+          ...(hasDepth ? { yDepth: {
+            type: 'linear',
+            reverse: true,
+            position: 'left',
+            title: { display: true, text: depthTitle },
+          } } : {}),
+          ...(hasOther ? { yOther: {
+            type: 'linear',
+            position: hasDepth ? 'right' : 'left',
+            grid: { drawOnChartArea: !hasDepth },
+            title: { display: true, text: otherTitle },
+          } } : {}),
+        },
+      },
+      });
+    } catch (e) {
+      toast('Could not render chart: ' + e.message);
+    }
+  });
+}
+
+/* ============================== draw-a-filter-polygon UI ============================== */
+function updateDrawPreview() {
+  if (state.drawPreviewLayer) { state.map.removeLayer(state.drawPreviewLayer); state.drawPreviewLayer = null; }
+  if (state.drawPoints.length) {
+    const group = L.featureGroup();
+    L.polyline(state.drawPoints, { color: '#ff6600', weight: 2, dashArray: '5 4', interactive: false }).addTo(group);
+    for (const p of state.drawPoints) L.circleMarker(p, { radius: 4, color: '#ff6600', weight: 2, fillColor: '#fff', fillOpacity: 1, interactive: false }).addTo(group);
+    group.addTo(state.map);
+    state.drawPreviewLayer = group;
+  }
+  document.getElementById('drawFinishBtn').disabled = state.drawPoints.length < 3;
+  document.getElementById('drawUndoBtn').disabled = state.drawPoints.length === 0;
+}
+function addDrawPoint(latlng) { state.drawPoints.push(latlng); updateDrawPreview(); }
+function undoDrawPoint() { state.drawPoints.pop(); updateDrawPreview(); }
+function startDrawing() {
+  clearFilter();
+  state.drawing = true;
+  state.drawPoints = [];
+  state.map.doubleClickZoom.disable();
+  state.map.getContainer().style.cursor = 'crosshair';
+  document.getElementById('drawFilterBtn').style.display = 'none';
+  document.getElementById('drawControls').style.display = 'inline-flex';
+  document.getElementById('drawFilterBtn').classList.remove('active');
+  updateDrawPreview();
+  toast('Click the map to place points, then Finish (or double-click) — 3+ points needed.');
+}
+function stopDrawingUI() {
+  state.drawing = false;
+  state.map.doubleClickZoom.enable();
+  state.map.getContainer().style.cursor = '';
+  if (state.drawPreviewLayer) { state.map.removeLayer(state.drawPreviewLayer); state.drawPreviewLayer = null; }
+  state.drawPoints = [];
+  document.getElementById('drawControls').style.display = 'none';
+  document.getElementById('drawFilterBtn').style.display = '';
+}
+function cancelDrawing() { stopDrawingUI(); }
+// Renders the drawn filter as an editable polygon — a small draggable handle at each vertex
+// lets the boundary be reshaped after the fact, not just redrawn from scratch.
+function renderFilterPolygon() {
+  if (state.filterPolygonLayer) { state.map.removeLayer(state.filterPolygonLayer); state.filterPolygonLayer = null; }
+  if (state.filterHandlesLayer) { state.map.removeLayer(state.filterHandlesLayer); state.filterHandlesLayer = null; }
+  if (!state.filterPolygon) return;
+  const latlngs = state.filterPolygon.ring.slice(0, -1).map(([lng, lat]) => L.latLng(lat, lng));
+  state.filterPolygonLayer = L.polygon(latlngs, { color: '#ff6600', weight: 2, dashArray: '6 4', fillOpacity: 0.05, fillColor: '#ff6600', interactive: false }).addTo(state.map);
+
+  const handleIcon = L.divIcon({ className: 'vertex-handle', iconSize: [14, 14], iconAnchor: [7, 7] });
+  const group = L.layerGroup();
+  latlngs.forEach((ll, i) => {
+    const handle = L.marker(ll, { icon: handleIcon, draggable: true, title: 'Drag to reshape the boundary' }).addTo(group);
+    handle.on('drag', () => {
+      latlngs[i] = handle.getLatLng();
+      state.filterPolygonLayer.setLatLngs(latlngs);
+    });
+    handle.on('dragend', () => {
+      const ring = latlngs.map(p => [p.lng, p.lat]);
+      ring.push(ring[0]);
+      state.filterPolygon = { ring, bbox: ringBbox(ring) };
+      applyPolygonStyling();
+      updateStats();
+      redrawChart();
+    });
+  });
+  group.addTo(state.map);
+  state.filterHandlesLayer = group;
+}
+function finishDrawing() {
+  if (state.drawPoints.length < 3) return;
+  const ring = state.drawPoints.map(p => [p.lng, p.lat]);
+  ring.push(ring[0]);
+  state.filterPolygon = { ring, bbox: ringBbox(ring) };
+  renderFilterPolygon();
+  stopDrawingUI();
+  document.getElementById('drawFilterBtn').textContent = '✕ Clear filter';
+  document.getElementById('drawFilterBtn').title = 'Remove the polygon filter';
+  document.getElementById('drawFilterBtn').classList.add('active');
+  applyPolygonStyling();
+  updateStats();
+  redrawChart();
+  toast('Filter applied — drag the orange handles to reshape it, or chart now reflects sites inside the drawn area.');
+}
+function clearFilter() {
+  const had = !!state.filterPolygon;
+  state.filterPolygon = null;
+  if (state.filterPolygonLayer) { state.map.removeLayer(state.filterPolygonLayer); state.filterPolygonLayer = null; }
+  if (state.filterHandlesLayer) { state.map.removeLayer(state.filterHandlesLayer); state.filterHandlesLayer = null; }
+  document.getElementById('drawFilterBtn').textContent = '⬠ Draw filter area';
+  document.getElementById('drawFilterBtn').title = 'Draw a polygon on the map to select points of diversion inside it';
+  document.getElementById('drawFilterBtn').classList.remove('active');
+  if (had) { applyPolygonStyling(); updateStats(); redrawChart(); }
+}
+function toggleDrawFilter() {
+  if (state.filterPolygon) clearFilter();
+  else if (!state.drawing) startDrawing();
+}
+
+/* ============================== wire up ============================== */
+document.getElementById('basemapSelect').onchange = (e) => setBasemap(e.target.value);
+// Full-height drag handles for resizing the side panels — plain mousedown/move/up on the
+// document, so the drag keeps working even while the cursor passes over the map or iframe-like
+// content in between.
+function makeSplitterDraggable(splitterEl, panelEl, growsWhenDraggedRight) {
+  let startX = 0, startWidth = 0, rafPending = false;
+  function onMove(e) {
+    const dx = e.clientX - startX;
+    const min = parseInt(getComputedStyle(panelEl).minWidth, 10) || 0;
+    const max = parseInt(getComputedStyle(panelEl).maxWidth, 10) || Infinity;
+    const raw = growsWhenDraggedRight ? startWidth + dx : startWidth - dx;
+    panelEl.style.width = Math.min(Math.max(raw, min), max) + 'px';
+    // The map caches its container size and won't redraw tiles into newly-revealed space on
+    // its own — it needs to be told the size changed. rAF-throttled so a fast drag doesn't
+    // spam recalculations every single mousemove.
+    if (!rafPending) {
+      rafPending = true;
+      requestAnimationFrame(() => { rafPending = false; if (state.map) state.map.invalidateSize({ animate: false }); });
+    }
+  }
+  function onUp() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    splitterEl.classList.remove('dragging');
+    if (state.map) state.map.invalidateSize({ animate: false });
+  }
+  splitterEl.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    startX = e.clientX;
+    startWidth = panelEl.getBoundingClientRect().width;
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+    splitterEl.classList.add('dragging');
+  });
+}
+makeSplitterDraggable(document.getElementById('filterSplitter'), document.getElementById('filterPanel'), true);
+makeSplitterDraggable(document.getElementById('panelSplitter'), document.getElementById('panel'), false);
+
+document.getElementById('drawFilterBtn').onclick = () => toggleDrawFilter();
+document.getElementById('drawFinishBtn').onclick = () => finishDrawing();
+document.getElementById('drawUndoBtn').onclick = () => undoDrawPoint();
+document.getElementById('drawCancelBtn').onclick = () => cancelDrawing();
+document.getElementById('clearFilterLink').onclick = () => clearFilter();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && state.drawing) cancelDrawing(); });
+document.getElementById('timeFrom').oninput = (e) => {
+  if (!state.timeRange) return;
+  let v = parseInt(e.target.value, 10);
+  if (v > state.timeRange.to) { v = state.timeRange.to; e.target.value = v; }
+  state.timeRange.from = v;
+  updateTimeSliderUI();
+};
+document.getElementById('timeTo').oninput = (e) => {
+  if (!state.timeRange) return;
+  let v = parseInt(e.target.value, 10);
+  if (v < state.timeRange.from) { v = state.timeRange.from; e.target.value = v; }
+  state.timeRange.to = v;
+  updateTimeSliderUI();
+};
+const commitTimeRange = () => { rebuildVisibleMarkers(); updateStats(); redrawChart(); };
+document.getElementById('timeFrom').onchange = commitTimeRange;
+document.getElementById('timeTo').onchange = commitTimeRange;
+function commitTimeNumInput(el, isFrom) {
+  if (!state.timeRange || !state.timeBounds) return;
+  let v = parseInt(el.value, 10);
+  if (!isFinite(v)) v = isFrom ? state.timeRange.from : state.timeRange.to;
+  v = Math.min(Math.max(v, state.timeBounds.lo), state.timeBounds.hi);
+  if (isFrom) { if (v > state.timeRange.to) v = state.timeRange.to; state.timeRange.from = v; document.getElementById('timeFrom').value = v; }
+  else { if (v < state.timeRange.from) v = state.timeRange.from; state.timeRange.to = v; document.getElementById('timeTo').value = v; }
+  el.value = v;
+  updateTimeSliderUI();
+  commitTimeRange();
+}
+document.getElementById('timeFromNum').onchange = (e) => commitTimeNumInput(e.target, true);
+document.getElementById('timeToNum').onchange = (e) => commitTimeNumInput(e.target, false);
+document.getElementById('timeResetBtn').onclick = () => {
+  if (!state.timeBounds) return;
+  state.timeRange = { from: state.timeBounds.lo, to: state.timeBounds.hi };
+  document.getElementById('timeFrom').value = state.timeRange.from;
+  document.getElementById('timeTo').value = state.timeRange.to;
+  updateTimeSliderUI();
+  commitTimeRange();
+};
+document.getElementById('parentLink').onclick = (e) => {
+  e.preventDefault();
+  toast('Open water-data-viewer.html separately — this tool doesn\'t auto-launch it from here.');
+};
+
+initMap();
+loadFieldPickers();
+initTimeFilter();
+</script>
+</body>
+</html>
